@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Life Dashboard</title>
+<!-- PWA(Phase 4): GitHub Pagesで開いたときにホーム画面追加・オフライン動作できるようにする -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#f4f4f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121214" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="記録">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  :root {
+    --bg: #f4f4f7;
+    --card: #ffffff;
+    --text: #1c1c1e;
+    --text-sub: #6e6e73;
+    --border: #d9d9de;
+    --accent: #2f7cf6;
+    --accent-text: #ffffff;
+    --danger: #d64545;
+    --tabbar-bg: #ffffffee;
+    --input-bg: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121214;
+      --card: #1e1e21;
+      --text: #f2f2f5;
+      --text-sub: #9b9ba1;
+      --border: #3a3a3f;
+      --accent: #4a8df8;
+      --accent-text: #ffffff;
+      --danger: #ff6b6b;
+      --tabbar-bg: #1c1c1fee;
+      --input-bg: #2a2a2e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  .app {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 12px 12px 170px; /* 下部の保存バー+タブバーの分を空ける */
+  }
+  h1 {
+    font-size: 18px;
+    margin: 4px 4px 12px;
+  }
+  h1 small { font-weight: normal; color: var(--text-sub); font-size: 13px; }
+  section.screen { display: none; }
+  section.screen.active { display: block; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .card h2 {
+    font-size: 15px;
+    margin: 0 0 10px;
+    color: var(--text-sub);
+    font-weight: 600;
+  }
+  label.field-label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-sub);
+    margin: 10px 0 4px;
+  }
+  textarea, input[type="text"], input[type="number"], select {
+    width: 100%;
+    font-size: 16px; /* iOS Safariの自動ズーム防止 */
+    font-family: inherit;
+    color: var(--text);
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+  }
+  textarea { resize: vertical; min-height: 72px; }
+  input:focus, textarea:focus, select:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+  }
+
+  /* 体調の絵文字ボタン */
+  .emoji-row { display: flex; gap: 8px; }
+  .emoji-btn {
+    flex: 1;
+    min-height: 48px;
+    font-size: 26px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    padding: 6px 0;
+  }
+  .emoji-btn.selected {
+    border: 2px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 15%, var(--input-bg));
+  }
+
+  /* 勉強した/してない トグル */
+  .toggle-row { display: flex; gap: 8px; }
+  .toggle-btn {
+    flex: 1;
+    min-height: 44px;
+    font-size: 16px;
+    background: var(--input-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .toggle-btn.selected {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-color: var(--accent);
+  }
+
+  .study-row { display: flex; gap: 8px; }
+  .study-row input[type="text"] { flex: 1; }
+  .study-row .minutes-wrap { display: flex; align-items: center; gap: 4px; width: 110px; }
+  .study-row input[type="number"] { width: 70px; text-align: right; }
+
+  /* 明日やること */
+  .todo-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .todo-row input[type="checkbox"] { width: 22px; height: 22px; flex-shrink: 0; }
+  .todo-row input[type="text"] { flex: 1; }
+
+  .hint { font-size: 12px; color: var(--text-sub); margin: 6px 0 0; }
+
+  /* 履歴 */
+  .history-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .history-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    min-height: 44px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .history-head .date { font-weight: 600; white-space: nowrap; }
+  .history-head .emoji { font-size: 20px; }
+  .history-head .preview {
+    flex: 1;
+    color: var(--text-sub);
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .history-detail {
+    display: none;
+    border-top: 1px solid var(--border);
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+  .history-item.open .history-detail { display: block; }
+  .history-detail dt { color: var(--text-sub); font-size: 12px; margin-top: 8px; }
+  .history-detail dd { margin: 2px 0 0; white-space: pre-wrap; }
+  .history-detail dl { margin: 0; }
+  .empty-msg { color: var(--text-sub); text-align: center; padding: 30px 0; }
+
+  button.secondary {
+    display: inline-block;
+    min-height: 44px;
+    font-size: 15px;
+    padding: 10px 16px;
+    background: var(--input-bg);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .backup-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .backup-btns button.secondary { flex: 1; }
+
+  /* 保存バー(「今日」画面でのみ表示) */
+  #save-bar {
+    position: fixed;
+    left: 0; right: 0;
+    bottom: calc(56px + env(safe-area-inset-bottom));
+    display: none;
+    justify-content: center;
+    padding: 10px 12px;
+    background: linear-gradient(to top, var(--bg) 70%, transparent);
+    z-index: 10;
+  }
+  #save-bar.visible { display: flex; }
+  #btn-save {
+    width: 100%;
+    max-width: 576px;
+    min-height: 50px;
+    font-size: 17px;
+    font-weight: 600;
+    font-family: inherit;
+    background: var(--accent);
+    color: var(--accent-text);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+  #btn-save:active { opacity: 0.85; }
+
+  /* 下部タブバー */
+  #tabbar {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    height: calc(56px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--tabbar-bg);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border);
+    display: flex;
+    z-index: 20;
+  }
+  #tabbar button {
+    flex: 1;
+    min-width: 44px;
+    min-height: 44px;
+    background: none;
+    border: none;
+    font-family: inherit;
+    font-size: 11px;
+    color: var(--text-sub);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+  }
+  #tabbar button .icon { font-size: 20px; line-height: 1; }
+  #tabbar button.active { color: var(--accent); font-weight: 600; }
+
+  /* 保存トースト */
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(130px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    background: var(--text);
+    color: var(--bg);
+    padding: 10px 18px;
+    border-radius: 20px;
+    font-size: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+    z-index: 30;
+    white-space: nowrap;
+  }
+  #toast.show { opacity: 1; }
+
+  .edit-banner {
+    background: color-mix(in srgb, var(--accent) 12%, var(--card));
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 14px;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .edit-banner.visible { display: flex; }
+  .edit-banner button {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    min-height: 44px;
+    padding: 0 8px;
+    white-space: nowrap;
+  }
+
+  /* リスト画面(Phase 2) */
+  .section-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 18px 4px 10px;
+  }
+  .star-row { display: flex; gap: 8px; }
+  .star-btn {
+    flex: 1;
+    min-height: 44px;
+    font-size: 22px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    color: var(--text-sub);
+    opacity: 0.45;
+  }
+  .star-btn.filled {
+    color: #f5a623;
+    border-color: #f5a623;
+    opacity: 1;
+  }
+  .add-btn {
+    width: 100%;
+    min-height: 46px;
+    margin-top: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    font-family: inherit;
+    background: var(--accent);
+    color: var(--accent-text);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .add-btn:active { opacity: 0.85; }
+  .item-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .item-card.closed-item { opacity: 0.55; }
+  .item-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .item-name { font-weight: 600; flex: 1; min-width: 120px; }
+  .item-stars { color: #f5a623; white-space: nowrap; }
+  .item-price { white-space: nowrap; }
+  .item-sub {
+    font-size: 13px;
+    color: var(--text-sub);
+    margin-top: 4px;
+    white-space: pre-wrap;
+  }
+  .item-actions { display: flex; gap: 8px; margin-top: 10px; align-items: stretch; }
+  .status-seg { display: flex; gap: 6px; flex: 1; }
+  .status-seg button {
+    flex: 1;
+    min-height: 40px;
+    font-size: 13px;
+    font-family: inherit;
+    background: var(--input-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    padding: 0 2px;
+  }
+  .status-seg button.selected {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  .del-btn {
+    min-height: 40px;
+    min-width: 44px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--danger);
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 0 10px;
+  }
+
+  /* 週次レビュー(Phase 3) */
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: var(--text-sub); font-size: 14px; }
+  .stat-value { font-weight: 600; font-size: 16px; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== 画面1: 今日 ===== -->
+  <section class="screen active" id="screen-today">
+    <h1>今日の記録 <small id="today-date-label"></small></h1>
+
+    <div class="edit-banner" id="edit-banner">
+      <span id="edit-banner-text"></span>
+      <button type="button" id="btn-back-to-today">今日に戻る</button>
+    </div>
+
+    <div class="card">
+      <h2>今日のメモ</h2>
+      <textarea id="f-memo" rows="3" placeholder="3行日記。自由に書く"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>体調</h2>
+      <div class="emoji-row" id="condition-row">
+        <button type="button" class="emoji-btn" data-value="1">😫</button>
+        <button type="button" class="emoji-btn" data-value="2">😞</button>
+        <button type="button" class="emoji-btn" data-value="3">😐</button>
+        <button type="button" class="emoji-btn" data-value="4">🙂</button>
+        <button type="button" class="emoji-btn" data-value="5">😄</button>
+      </div>
+      <label class="field-label" for="f-sleep">睡眠時間(約何時間)</label>
+      <select id="f-sleep"><option value="">未入力</option></select>
+      <label class="field-label" for="f-condition-note">体調メモ(任意)</label>
+      <input type="text" id="f-condition-note" placeholder="症状や気づき">
+    </div>
+
+    <div class="card">
+      <h2>勉強</h2>
+      <div class="toggle-row" id="studied-row">
+        <button type="button" class="toggle-btn" data-value="true">した</button>
+        <button type="button" class="toggle-btn selected" data-value="false">してない</button>
+      </div>
+      <label class="field-label">勉強内容と分数</label>
+      <div class="study-row">
+        <input type="text" id="f-study-content" placeholder="例: 乙4 法令">
+        <div class="minutes-wrap">
+          <input type="number" id="f-study-minutes" min="0" step="5" inputmode="numeric" placeholder="30"><span>分</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>支出メモ</h2>
+      <textarea id="f-expenses" rows="3" placeholder="1行に1件。品目と金額を空白で区切る&#10;例:&#10;昼食 800&#10;コーヒー 500"></textarea>
+      <p class="hint">品目と金額だけ。支払い手段は書かない</p>
+    </div>
+
+    <div class="card">
+      <h2>明日やること(最大3件)</h2>
+      <div class="todo-row"><input type="checkbox" id="f-todo-done-1"><input type="text" id="f-todo-1" placeholder="1つめ"></div>
+      <div class="todo-row"><input type="checkbox" id="f-todo-done-2"><input type="text" id="f-todo-2" placeholder="2つめ"></div>
+      <div class="todo-row"><input type="checkbox" id="f-todo-done-3"><input type="text" id="f-todo-3" placeholder="3つめ"></div>
+      <p class="hint">チェックは「済んだ」印。3件までに絞る</p>
+    </div>
+  </section>
+
+  <!-- ===== 画面2: 履歴 ===== -->
+  <section class="screen" id="screen-history">
+    <h1>履歴</h1>
+    <div id="history-list"></div>
+
+    <div class="card">
+      <h2>データのバックアップ</h2>
+      <div class="backup-btns">
+        <button type="button" class="secondary" id="btn-export">JSONエクスポート</button>
+        <button type="button" class="secondary" id="btn-import">JSONインポート</button>
+      </div>
+      <input type="file" id="import-file" accept=".json,application/json" style="display:none">
+      <p class="hint">週1回のエクスポートをバックアップ習慣に。インポートは現在のデータをファイルの内容で置き換えます</p>
+    </div>
+  </section>
+
+  <!-- ===== 画面3: リスト(Phase 2) ===== -->
+  <section class="screen" id="screen-list">
+    <h1>リスト</h1>
+
+    <div class="section-title">🛒 買うか迷っているもの</div>
+    <div class="card">
+      <h2>追加する</h2>
+      <label class="field-label" for="w-name">品名</label>
+      <input type="text" id="w-name" placeholder="例: 新しいマウス">
+      <label class="field-label" for="w-price">おおよその価格(円)</label>
+      <input type="number" id="w-price" min="0" inputmode="numeric" placeholder="8000">
+      <label class="field-label">欲しい度</label>
+      <div class="star-row" id="w-want">
+        <button type="button" class="star-btn filled" data-value="1">★</button>
+        <button type="button" class="star-btn" data-value="2">★</button>
+        <button type="button" class="star-btn" data-value="3">★</button>
+      </div>
+      <label class="field-label" for="w-reason">迷っている理由</label>
+      <input type="text" id="w-reason" placeholder="例: 今のは動くが左クリックが怪しい">
+      <button type="button" class="add-btn" id="btn-add-wish">リストに追加</button>
+    </div>
+    <div id="wishlist-items"></div>
+
+    <div class="section-title">🔧 デバイス不具合ログ</div>
+    <div class="card">
+      <h2>追加する</h2>
+      <label class="field-label" for="d-device">デバイス</label>
+      <select id="d-device">
+        <option value="ゲーミングPC">ゲーミングPC</option>
+        <option value="iPhone">iPhone</option>
+        <option value="Apple Watch">Apple Watch</option>
+        <option value="PS5">PS5</option>
+        <option value="Switch">Switch</option>
+        <option value="周辺機器">周辺機器</option>
+        <option value="家電">家電</option>
+        <option value="__other__">その他(下に入力)</option>
+      </select>
+      <input type="text" id="d-device-other" placeholder="デバイス名を入力" style="display:none; margin-top:8px;">
+      <label class="field-label" for="d-symptom">症状</label>
+      <input type="text" id="d-symptom" placeholder="例: 画面が一瞬暗転する">
+      <label class="field-label" for="d-tried">試したこと(任意)</label>
+      <input type="text" id="d-tried" placeholder="例: ケーブル差し直し → 変わらず">
+      <button type="button" class="add-btn" id="btn-add-device">ログに追加</button>
+    </div>
+    <div id="device-items"></div>
+  </section>
+
+  <!-- ===== 画面4: 週次レビュー(Phase 3) ===== -->
+  <section class="screen" id="screen-weekly">
+    <h1>週次レビュー <small id="weekly-label"></small></h1>
+
+    <div class="card">
+      <h2>今週のようす(自動集計)</h2>
+      <div id="weekly-stats"></div>
+    </div>
+
+    <div class="card">
+      <h2>振り返り</h2>
+      <label class="field-label" for="wk-kept">続いたこと</label>
+      <textarea id="wk-kept" rows="2" placeholder="例: 毎晩の記録が7日続いた"></textarea>
+      <label class="field-label" for="wk-stopped">止まったこと</label>
+      <textarea id="wk-stopped" rows="2" placeholder="例: 朝のストレッチをやめてしまった"></textarea>
+      <label class="field-label" for="wk-next">来週の一手(1つだけ)</label>
+      <input type="text" id="wk-next" placeholder="例: 勉強を1日15分に減らして毎日やる">
+      <button type="button" class="add-btn" id="btn-save-weekly">振り返りを保存</button>
+    </div>
+
+    <div class="card">
+      <h2>バックアップ</h2>
+      <button type="button" class="secondary" id="btn-export-weekly" style="width:100%">JSONエクスポートでバックアップする</button>
+      <p class="hint">週次レビューのついでに週1回のバックアップを習慣に</p>
+    </div>
+  </section>
+
+</div>
+
+<!-- 保存バー(今日画面のみ) -->
+<div id="save-bar" class="visible">
+  <button type="button" id="btn-save">保存する</button>
+</div>
+
+<!-- 下部タブバー -->
+<nav id="tabbar">
+  <button type="button" class="active" data-screen="today"><span class="icon">📝</span>今日</button>
+  <button type="button" data-screen="history"><span class="icon">📚</span>履歴</button>
+  <button type="button" data-screen="list"><span class="icon">🛒</span>リスト</button>
+  <button type="button" data-screen="weekly"><span class="icon">📊</span>週次</button>
+</nav>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ===== 定数(localStorageキーは仕様書セクション4に厳密に従う) =====
+  var KEY_ENTRIES = 'pld_entries';
+  var KEY_WISHLIST = 'pld_wishlist';
+  var KEY_DEVICES = 'pld_devices';
+  var KEY_WEEKLY = 'pld_weekly';
+
+  var EMOJI = { 1: '😫', 2: '😞', 3: '😐', 4: '🙂', 5: '😄' };
+  var WEEKDAY = ['日', '月', '火', '水', '木', '金', '土'];
+
+  // 編集対象の日付(通常は今日。履歴から編集すると過去日になる)
+  var currentDate = todayStr();
+
+  // ===== ユーティリティ =====
+  function todayStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
+  }
+
+  function formatDateLabel(dateStr) {
+    var parts = dateStr.split('-');
+    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return dateStr + ' (' + WEEKDAY[d.getDay()] + ')';
+  }
+
+  function loadJSON(key, fallback) {
+    try {
+      var raw = localStorage.getItem(key);
+      if (raw === null) return fallback;
+      var parsed = JSON.parse(raw);
+      return parsed === null ? fallback : parsed;
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  function saveJSON(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+  }
+
+  function showToast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(function () { t.classList.remove('show'); }, 1800);
+  }
+
+  // 全角数字を半角に直す(支出の金額入力を寛容にする)
+  function toHalfWidth(s) {
+    return s.replace(/[０-９]/g, function (c) {
+      return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+    }).replace(/，/g, ',');
+  }
+
+  // ===== 睡眠時間セレクト(0〜12時間、0.5刻み)を生成 =====
+  (function buildSleepOptions() {
+    var sel = document.getElementById('f-sleep');
+    for (var h = 0; h <= 12; h += 0.5) {
+      var opt = document.createElement('option');
+      opt.value = String(h);
+      opt.textContent = h + '時間';
+      sel.appendChild(opt);
+    }
+  })();
+
+  // ===== 体調絵文字ボタン(もう一度押すと選択解除) =====
+  var conditionValue = null;
+  document.getElementById('condition-row').addEventListener('click', function (e) {
+    var btn = e.target.closest('.emoji-btn');
+    if (!btn) return;
+    var v = Number(btn.dataset.value);
+    conditionValue = (conditionValue === v) ? null : v;
+    renderConditionButtons();
+  });
+  function renderConditionButtons() {
+    document.querySelectorAll('#condition-row .emoji-btn').forEach(function (b) {
+      b.classList.toggle('selected', Number(b.dataset.value) === conditionValue);
+    });
+  }
+
+  // ===== 勉強した/してない トグル =====
+  var studiedValue = false;
+  document.getElementById('studied-row').addEventListener('click', function (e) {
+    var btn = e.target.closest('.toggle-btn');
+    if (!btn) return;
+    studiedValue = (btn.dataset.value === 'true');
+    renderStudiedButtons();
+  });
+  function renderStudiedButtons() {
+    document.querySelectorAll('#studied-row .toggle-btn').forEach(function (b) {
+      b.classList.toggle('selected', (b.dataset.value === 'true') === studiedValue);
+    });
+  }
+
+  // ===== 支出テキスト ⇔ 配列 変換 =====
+  // 1行 = 1件。「品目 金額」の形式(最後の空白以降が数値なら金額とみなす)
+  function parseExpenses(text) {
+    var result = [];
+    text.split('\n').forEach(function (line) {
+      var trimmed = line.trim();
+      if (!trimmed) return;
+      var normalized = toHalfWidth(trimmed).replace(/円\s*$/, '');
+      var m = normalized.match(/^(.*?)[\s　]+([\d,]+(?:\.\d+)?)$/);
+      if (m) {
+        result.push({ item: m[1].trim(), amount: Number(m[2].replace(/,/g, '')) });
+      } else {
+        result.push({ item: trimmed, amount: 0 });
+      }
+    });
+    return result;
+  }
+
+  function expensesToText(expenses) {
+    if (!Array.isArray(expenses)) return '';
+    return expenses.map(function (e) {
+      return e.item + (e.amount ? ' ' + e.amount : '');
+    }).join('\n');
+  }
+
+  // ===== フォーム ⇔ エントリ 変換 =====
+  function collectEntryFromForm() {
+    var tomorrow = [];
+    for (var i = 1; i <= 3; i++) {
+      var text = document.getElementById('f-todo-' + i).value.trim();
+      if (text) {
+        tomorrow.push({
+          text: text,
+          done: document.getElementById('f-todo-done-' + i).checked
+        });
+      }
+    }
+    var minutesRaw = document.getElementById('f-study-minutes').value;
+    return {
+      memo: document.getElementById('f-memo').value,
+      condition: conditionValue,
+      sleepHours: document.getElementById('f-sleep').value === '' ? null : Number(document.getElementById('f-sleep').value),
+      conditionNote: document.getElementById('f-condition-note').value,
+      studied: studiedValue,
+      studyContent: document.getElementById('f-study-content').value,
+      studyMinutes: minutesRaw === '' ? 0 : Number(minutesRaw),
+      expenses: parseExpenses(document.getElementById('f-expenses').value),
+      tomorrow: tomorrow
+    };
+  }
+
+  function loadEntryToForm(entry) {
+    entry = entry || {};
+    document.getElementById('f-memo').value = entry.memo || '';
+    conditionValue = (typeof entry.condition === 'number') ? entry.condition : null;
+    renderConditionButtons();
+    document.getElementById('f-sleep').value =
+      (typeof entry.sleepHours === 'number') ? String(entry.sleepHours) : '';
+    document.getElementById('f-condition-note').value = entry.conditionNote || '';
+    studiedValue = !!entry.studied;
+    renderStudiedButtons();
+    document.getElementById('f-study-content').value = entry.studyContent || '';
+    document.getElementById('f-study-minutes').value =
+      entry.studyMinutes ? String(entry.studyMinutes) : '';
+    document.getElementById('f-expenses').value = expensesToText(entry.expenses);
+    var tomorrow = Array.isArray(entry.tomorrow) ? entry.tomorrow : [];
+    for (var i = 1; i <= 3; i++) {
+      var item = tomorrow[i - 1];
+      document.getElementById('f-todo-' + i).value = item ? (item.text || '') : '';
+      document.getElementById('f-todo-done-' + i).checked = item ? !!item.done : false;
+    }
+  }
+
+  // ===== 保存 =====
+  document.getElementById('btn-save').addEventListener('click', function () {
+    var entries = loadJSON(KEY_ENTRIES, {});
+    entries[currentDate] = collectEntryFromForm(); // 同じ日は上書き
+    saveJSON(KEY_ENTRIES, entries);
+    showToast('保存しました ✓');
+    renderHistory();
+  });
+
+  // ===== 今日画面の日付表示・編集バナー =====
+  function setCurrentDate(dateStr) {
+    currentDate = dateStr;
+    document.getElementById('today-date-label').textContent = formatDateLabel(dateStr);
+    var banner = document.getElementById('edit-banner');
+    if (dateStr === todayStr()) {
+      banner.classList.remove('visible');
+    } else {
+      document.getElementById('edit-banner-text').textContent =
+        formatDateLabel(dateStr) + ' の記録を編集中';
+      banner.classList.add('visible');
+    }
+    var entries = loadJSON(KEY_ENTRIES, {});
+    loadEntryToForm(entries[dateStr]);
+  }
+
+  document.getElementById('btn-back-to-today').addEventListener('click', function () {
+    setCurrentDate(todayStr());
+  });
+
+  // ===== 履歴画面 =====
+  function renderHistory() {
+    var listEl = document.getElementById('history-list');
+    var entries = loadJSON(KEY_ENTRIES, {});
+    var dates = Object.keys(entries).sort().reverse();
+    listEl.innerHTML = '';
+
+    if (dates.length === 0) {
+      var p = document.createElement('p');
+      p.className = 'empty-msg';
+      p.textContent = 'まだ記録がありません。「今日」タブから保存すると、ここに並びます。';
+      listEl.appendChild(p);
+      return;
+    }
+
+    dates.forEach(function (date) {
+      var entry = entries[date] || {};
+      var item = document.createElement('div');
+      item.className = 'history-item';
+
+      var head = document.createElement('div');
+      head.className = 'history-head';
+
+      var dateSpan = document.createElement('span');
+      dateSpan.className = 'date';
+      dateSpan.textContent = formatDateLabel(date);
+      head.appendChild(dateSpan);
+
+      if (typeof entry.condition === 'number' && EMOJI[entry.condition]) {
+        var emojiSpan = document.createElement('span');
+        emojiSpan.className = 'emoji';
+        emojiSpan.textContent = EMOJI[entry.condition];
+        head.appendChild(emojiSpan);
+      }
+
+      var preview = document.createElement('span');
+      preview.className = 'preview';
+      preview.textContent = (entry.memo || '').split('\n')[0];
+      head.appendChild(preview);
+
+      head.addEventListener('click', function () {
+        item.classList.toggle('open');
+      });
+
+      var detail = document.createElement('div');
+      detail.className = 'history-detail';
+      detail.appendChild(buildDetail(date, entry));
+
+      item.appendChild(head);
+      item.appendChild(detail);
+      listEl.appendChild(item);
+    });
+  }
+
+  function buildDetail(date, entry) {
+    var frag = document.createDocumentFragment();
+    var dl = document.createElement('dl');
+
+    function addRow(label, value) {
+      if (value === '' || value === null || value === undefined) return;
+      var dt = document.createElement('dt');
+      dt.textContent = label;
+      var dd = document.createElement('dd');
+      dd.textContent = value;
+      dl.appendChild(dt);
+      dl.appendChild(dd);
+    }
+
+    addRow('メモ', entry.memo || '');
+    if (typeof entry.condition === 'number') {
+      addRow('体調', EMOJI[entry.condition] + ' (' + entry.condition + '/5)');
+    }
+    if (typeof entry.sleepHours === 'number') addRow('睡眠時間', entry.sleepHours + '時間');
+    addRow('体調メモ', entry.conditionNote || '');
+    if (entry.studied || entry.studyContent || entry.studyMinutes) {
+      addRow('勉強', (entry.studied ? 'した' : 'してない') +
+        (entry.studyContent ? ' / ' + entry.studyContent : '') +
+        (entry.studyMinutes ? ' / ' + entry.studyMinutes + '分' : ''));
+    }
+    if (Array.isArray(entry.expenses) && entry.expenses.length > 0) {
+      var total = 0;
+      var lines = entry.expenses.map(function (e) {
+        total += Number(e.amount) || 0;
+        return e.item + ' ' + (Number(e.amount) || 0) + '円';
+      });
+      addRow('支出', lines.join('\n') + '\n合計 ' + total + '円');
+    }
+    if (Array.isArray(entry.tomorrow) && entry.tomorrow.length > 0) {
+      addRow('明日やること', entry.tomorrow.map(function (t) {
+        return (t.done ? '☑ ' : '☐ ') + t.text;
+      }).join('\n'));
+    }
+
+    if (dl.children.length === 0) {
+      var empty = document.createElement('p');
+      empty.className = 'hint';
+      empty.textContent = '(空の記録)';
+      frag.appendChild(empty);
+    } else {
+      frag.appendChild(dl);
+    }
+
+    var editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'secondary';
+    editBtn.style.marginTop = '10px';
+    editBtn.textContent = 'この日の記録を編集';
+    editBtn.addEventListener('click', function () {
+      setCurrentDate(date);
+      showScreen('today');
+    });
+    frag.appendChild(editBtn);
+
+    return frag;
+  }
+
+  // ===== JSONエクスポート =====
+  function doExport() {
+    var data = {
+      entries: loadJSON(KEY_ENTRIES, {}),
+      wishlist: loadJSON(KEY_WISHLIST, []),
+      devices: loadJSON(KEY_DEVICES, []),
+      weekly: loadJSON(KEY_WEEKLY, {}),
+      exportedAt: new Date().toISOString()
+    };
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'life-dashboard-backup-' + todayStr() + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('エクスポートしました ✓');
+  }
+  document.getElementById('btn-export').addEventListener('click', doExport);
+  document.getElementById('btn-export-weekly').addEventListener('click', doExport);
+
+  // ===== JSONインポート(検証してから取り込む。壊れていたら中断) =====
+  document.getElementById('btn-import').addEventListener('click', function () {
+    document.getElementById('import-file').click();
+  });
+
+  document.getElementById('import-file').addEventListener('change', function (e) {
+    var file = e.target.files[0];
+    e.target.value = ''; // 同じファイルを選び直せるようにリセット
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var data;
+      try {
+        data = JSON.parse(reader.result);
+      } catch (err) {
+        alert('インポート失敗: JSONとして読み込めませんでした。データは変更していません。');
+        return;
+      }
+      var error = validateImport(data);
+      if (error) {
+        alert('インポート失敗: ' + error + '\nデータは変更していません。');
+        return;
+      }
+      if (!confirm('現在のデータをこのファイルの内容で置き換えます。よろしいですか?\n(心配な場合は先にエクスポートしてください)')) {
+        return;
+      }
+      saveJSON(KEY_ENTRIES, data.entries || {});
+      saveJSON(KEY_WISHLIST, data.wishlist || []);
+      saveJSON(KEY_DEVICES, data.devices || []);
+      saveJSON(KEY_WEEKLY, data.weekly || {});
+      setCurrentDate(currentDate); // フォームを読み込み直す
+      renderHistory();
+      renderWishlist();
+      renderDevices();
+      renderWeekly();
+      showToast('インポートしました ✓');
+    };
+    reader.onerror = function () {
+      alert('ファイルを読み込めませんでした。データは変更していません。');
+    };
+    reader.readAsText(file);
+  });
+
+  function isValidDateKey(key) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return false;
+    var parts = key.split('-');
+    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return d.getFullYear() === Number(parts[0]) &&
+           d.getMonth() === Number(parts[1]) - 1 &&
+           d.getDate() === Number(parts[2]);
+  }
+
+  // 不正な形式ならエラーメッセージを返す。問題なければnull
+  function validateImport(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return 'ファイルの形式が違います(オブジェクトではありません)';
+    }
+    if (!('entries' in data)) {
+      return 'このアプリのバックアップファイルではないようです(entries がありません)';
+    }
+    if (typeof data.entries !== 'object' || data.entries === null || Array.isArray(data.entries)) {
+      return 'entries の形式が違います';
+    }
+    var keys = Object.keys(data.entries);
+    for (var i = 0; i < keys.length; i++) {
+      if (!isValidDateKey(keys[i])) {
+        return '存在しない日付が含まれています: ' + keys[i];
+      }
+      if (typeof data.entries[keys[i]] !== 'object' || data.entries[keys[i]] === null) {
+        return keys[i] + ' の記録の形式が違います';
+      }
+    }
+    if ('wishlist' in data && !Array.isArray(data.wishlist)) return 'wishlist の形式が違います';
+    if ('devices' in data && !Array.isArray(data.devices)) return 'devices の形式が違います';
+    if ('weekly' in data && (typeof data.weekly !== 'object' || data.weekly === null || Array.isArray(data.weekly))) {
+      return 'weekly の形式が違います';
+    }
+    return null;
+  }
+
+  // ===== リスト画面(Phase 2) =====
+  var WISH_STATUSES = ['迷い中', '買った', 'やめた'];
+  var DEVICE_STATUSES = ['未解決', '様子見', '解決'];
+
+  function el(tag, className, text) {
+    var n = document.createElement(tag);
+    if (className) n.className = className;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+
+  function nextId(arr) {
+    return arr.reduce(function (max, x) {
+      return Math.max(max, Number(x.id) || 0);
+    }, 0) + 1;
+  }
+
+  // --- 買うか迷っているもの ---
+  var wantValue = 1;
+  document.getElementById('w-want').addEventListener('click', function (e) {
+    var btn = e.target.closest('.star-btn');
+    if (!btn) return;
+    wantValue = Number(btn.dataset.value);
+    renderWantStars();
+  });
+  function renderWantStars() {
+    document.querySelectorAll('#w-want .star-btn').forEach(function (b) {
+      b.classList.toggle('filled', Number(b.dataset.value) <= wantValue);
+    });
+  }
+
+  document.getElementById('btn-add-wish').addEventListener('click', function () {
+    var name = document.getElementById('w-name').value.trim();
+    if (!name) { alert('品名を入力してください'); return; }
+    var items = loadJSON(KEY_WISHLIST, []);
+    items.push({
+      id: nextId(items),
+      name: name,
+      price: Number(document.getElementById('w-price').value) || 0,
+      want: wantValue,
+      reason: document.getElementById('w-reason').value.trim(),
+      added: todayStr(),
+      status: '迷い中'
+    });
+    saveJSON(KEY_WISHLIST, items);
+    document.getElementById('w-name').value = '';
+    document.getElementById('w-price').value = '';
+    document.getElementById('w-reason').value = '';
+    wantValue = 1;
+    renderWantStars();
+    renderWishlist();
+    showToast('追加しました ✓');
+  });
+
+  function renderWishlist() {
+    var listEl = document.getElementById('wishlist-items');
+    var items = loadJSON(KEY_WISHLIST, []);
+    listEl.innerHTML = '';
+    if (items.length === 0) {
+      listEl.appendChild(el('p', 'empty-msg', 'まだ何もありません'));
+      return;
+    }
+    var order = { '迷い中': 0, '買った': 1, 'やめた': 2 };
+    items.slice().sort(function (a, b) {
+      var s = (order[a.status] || 0) - (order[b.status] || 0);
+      if (s !== 0) return s;
+      var d = String(b.added || '').localeCompare(String(a.added || ''));
+      if (d !== 0) return d;
+      return (Number(b.id) || 0) - (Number(a.id) || 0);
+    }).forEach(function (item) {
+      var card = el('div', 'item-card' + (item.status !== '迷い中' ? ' closed-item' : ''));
+
+      var top = el('div', 'item-top');
+      top.appendChild(el('span', 'item-name', item.name || ''));
+      var want = Math.max(1, Math.min(3, Number(item.want) || 1));
+      top.appendChild(el('span', 'item-stars', '★'.repeat(want) + '☆'.repeat(3 - want)));
+      if (item.price) top.appendChild(el('span', 'item-price', Number(item.price).toLocaleString() + '円'));
+      card.appendChild(top);
+
+      var subLines = [];
+      if (item.reason) subLines.push('理由: ' + item.reason);
+      subLines.push('登録: ' + (item.added || '不明'));
+      card.appendChild(el('div', 'item-sub', subLines.join('\n')));
+
+      card.appendChild(buildItemActions(
+        WISH_STATUSES, item.status,
+        function (newStatus) { updateItemStatus(KEY_WISHLIST, item.id, newStatus, renderWishlist); },
+        function () { deleteItem(KEY_WISHLIST, item.id, item.name, renderWishlist); }
+      ));
+      listEl.appendChild(card);
+    });
+  }
+
+  // --- デバイス不具合ログ ---
+  document.getElementById('d-device').addEventListener('change', function () {
+    document.getElementById('d-device-other').style.display =
+      this.value === '__other__' ? '' : 'none';
+  });
+
+  document.getElementById('btn-add-device').addEventListener('click', function () {
+    var sel = document.getElementById('d-device').value;
+    var device = sel === '__other__'
+      ? document.getElementById('d-device-other').value.trim()
+      : sel;
+    if (!device) { alert('デバイス名を入力してください'); return; }
+    var symptom = document.getElementById('d-symptom').value.trim();
+    if (!symptom) { alert('症状を入力してください'); return; }
+    var items = loadJSON(KEY_DEVICES, []);
+    items.push({
+      id: nextId(items),
+      device: device,
+      symptom: symptom,
+      date: todayStr(),
+      tried: document.getElementById('d-tried').value.trim(),
+      status: '未解決'
+    });
+    saveJSON(KEY_DEVICES, items);
+    document.getElementById('d-device-other').value = '';
+    document.getElementById('d-symptom').value = '';
+    document.getElementById('d-tried').value = '';
+    renderDevices();
+    showToast('追加しました ✓');
+  });
+
+  function renderDevices() {
+    var listEl = document.getElementById('device-items');
+    var items = loadJSON(KEY_DEVICES, []);
+    listEl.innerHTML = '';
+    if (items.length === 0) {
+      listEl.appendChild(el('p', 'empty-msg', 'まだ何もありません'));
+      return;
+    }
+    var order = { '未解決': 0, '様子見': 1, '解決': 2 };
+    items.slice().sort(function (a, b) {
+      var s = (order[a.status] || 0) - (order[b.status] || 0);
+      if (s !== 0) return s;
+      var d = String(b.date || '').localeCompare(String(a.date || ''));
+      if (d !== 0) return d;
+      return (Number(b.id) || 0) - (Number(a.id) || 0);
+    }).forEach(function (item) {
+      var card = el('div', 'item-card' + (item.status === '解決' ? ' closed-item' : ''));
+
+      var top = el('div', 'item-top');
+      top.appendChild(el('span', 'item-name', item.device || ''));
+      top.appendChild(el('span', 'item-price', item.date || ''));
+      card.appendChild(top);
+
+      var subLines = [];
+      if (item.symptom) subLines.push('症状: ' + item.symptom);
+      if (item.tried) subLines.push('試したこと: ' + item.tried);
+      card.appendChild(el('div', 'item-sub', subLines.join('\n')));
+
+      card.appendChild(buildItemActions(
+        DEVICE_STATUSES, item.status,
+        function (newStatus) { updateItemStatus(KEY_DEVICES, item.id, newStatus, renderDevices); },
+        function () { deleteItem(KEY_DEVICES, item.id, item.device + 'の不具合', renderDevices); }
+      ));
+      listEl.appendChild(card);
+    });
+  }
+
+  // --- リスト共通: 状態切り替えと削除 ---
+  function buildItemActions(statuses, current, onStatus, onDelete) {
+    var actions = el('div', 'item-actions');
+    var seg = el('div', 'status-seg');
+    statuses.forEach(function (st) {
+      var b = el('button', current === st ? 'selected' : '', st);
+      b.type = 'button';
+      b.addEventListener('click', function () { onStatus(st); });
+      seg.appendChild(b);
+    });
+    actions.appendChild(seg);
+    var del = el('button', 'del-btn', '削除');
+    del.type = 'button';
+    del.addEventListener('click', onDelete);
+    actions.appendChild(del);
+    return actions;
+  }
+
+  function updateItemStatus(key, id, status, rerender) {
+    var items = loadJSON(key, []);
+    items.forEach(function (x) { if (x.id === id) x.status = status; });
+    saveJSON(key, items);
+    rerender();
+  }
+
+  function deleteItem(key, id, label, rerender) {
+    if (!confirm('「' + label + '」を削除しますか?')) return;
+    var items = loadJSON(key, []).filter(function (x) { return x.id !== id; });
+    saveJSON(key, items);
+    rerender();
+    showToast('削除しました');
+  }
+
+  // ===== 週次レビュー(Phase 3) =====
+  function fmtDate(d) {
+    return d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
+  }
+
+  // ISO 8601の週番号(YYYY-Wnn形式。claude-life-baseの週表記と揃える)
+  function isoWeekKey(d) {
+    var date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    date.setDate(date.getDate() + 3 - ((date.getDay() + 6) % 7)); // その週の木曜日
+    var week1 = new Date(date.getFullYear(), 0, 4);
+    var weekNo = 1 + Math.round(
+      ((date - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7
+    );
+    return date.getFullYear() + '-W' + String(weekNo).padStart(2, '0');
+  }
+
+  // 今週(月曜〜日曜)の日付文字列を7つ返す
+  function thisWeekDates() {
+    var now = new Date();
+    var date = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    date.setDate(date.getDate() - ((date.getDay() + 6) % 7)); // 月曜まで戻る
+    var arr = [];
+    for (var i = 0; i < 7; i++) {
+      arr.push(fmtDate(date));
+      date.setDate(date.getDate() + 1);
+    }
+    return arr;
+  }
+
+  function renderWeekly() {
+    var weekKey = isoWeekKey(new Date());
+    var dates = thisWeekDates();
+    document.getElementById('weekly-label').textContent =
+      weekKey + '(' + dates[0].slice(5).replace('-', '/') +
+      '〜' + dates[6].slice(5).replace('-', '/') + ')';
+
+    var entries = loadJSON(KEY_ENTRIES, {});
+    var recorded = 0, studyTotal = 0, expenseTotal = 0;
+    var condSum = 0, condCount = 0, todoDone = 0, todoTotal = 0;
+    dates.forEach(function (dateStr) {
+      var e = entries[dateStr];
+      if (!e) return;
+      recorded++;
+      studyTotal += Number(e.studyMinutes) || 0;
+      if (Array.isArray(e.expenses)) {
+        e.expenses.forEach(function (x) { expenseTotal += Number(x.amount) || 0; });
+      }
+      if (typeof e.condition === 'number') { condSum += e.condition; condCount++; }
+      if (Array.isArray(e.tomorrow)) {
+        e.tomorrow.forEach(function (t) { todoTotal++; if (t.done) todoDone++; });
+      }
+    });
+
+    var statsEl = document.getElementById('weekly-stats');
+    statsEl.innerHTML = '';
+    function addStat(label, value) {
+      var row = el('div', 'stat-row');
+      row.appendChild(el('span', 'stat-label', label));
+      row.appendChild(el('span', 'stat-value', value));
+      statsEl.appendChild(row);
+    }
+    addStat('記録した日数', recorded + ' / 7日');
+    addStat('勉強の合計', studyTotal + '分');
+    addStat('支出の合計', expenseTotal.toLocaleString() + '円');
+    if (condCount > 0) {
+      var avg = condSum / condCount;
+      addStat('体調の平均', (EMOJI[Math.round(avg)] || '') + ' ' + (Math.round(avg * 10) / 10) + ' / 5');
+    } else {
+      addStat('体調の平均', '—');
+    }
+    addStat('明日やることの消化', todoTotal > 0 ? todoDone + ' / ' + todoTotal + '件' : '—');
+
+    // 今週の振り返り欄を復元
+    var weekly = loadJSON(KEY_WEEKLY, {});
+    var review = weekly[weekKey] || {};
+    document.getElementById('wk-kept').value = review.kept || '';
+    document.getElementById('wk-stopped').value = review.stopped || '';
+    document.getElementById('wk-next').value = review.nextOneThing || '';
+  }
+
+  document.getElementById('btn-save-weekly').addEventListener('click', function () {
+    var weekKey = isoWeekKey(new Date());
+    var weekly = loadJSON(KEY_WEEKLY, {});
+    weekly[weekKey] = {
+      kept: document.getElementById('wk-kept').value,
+      stopped: document.getElementById('wk-stopped').value,
+      nextOneThing: document.getElementById('wk-next').value
+    };
+    saveJSON(KEY_WEEKLY, weekly);
+    showToast('保存しました ✓');
+  });
+
+  // ===== タブ切り替え =====
+  function showScreen(name) {
+    document.querySelectorAll('section.screen').forEach(function (s) {
+      s.classList.toggle('active', s.id === 'screen-' + name);
+    });
+    document.querySelectorAll('#tabbar button').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.screen === name);
+    });
+    // 保存バーは「今日」画面のみ
+    document.getElementById('save-bar').classList.toggle('visible', name === 'today');
+    if (name === 'history') renderHistory();
+    if (name === 'list') { renderWishlist(); renderDevices(); }
+    if (name === 'weekly') renderWeekly();
+    window.scrollTo(0, 0);
+  }
+
+  document.getElementById('tabbar').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-screen]');
+    if (btn) showScreen(btn.dataset.screen);
+  });
+
+  // ===== 初期化 =====
+  setCurrentDate(todayStr());
+  renderHistory();
+  renderWishlist();
+  renderDevices();
+  renderWeekly();
+
+  // ===== Service Worker登録(Phase 4) =====
+  // file://(ダブルクリックで開くローカル利用)では登録しない。
+  // GitHub Pages(https)で開いたときだけオフライン対応が有効になる。
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('sw.js').catch(function () {
+      // 登録に失敗してもアプリ自体は普通に使える
+    });
+  }
+})();
+</script>
+</body>
+</html>
