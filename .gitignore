@@ -1,0 +1,10 @@
+# このリポジトリは公開されている。個人データを絶対に入れない。
+backup/
+*_backup_*.json
+*.csv
+
+# OS / エディタ / OneDrive
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
