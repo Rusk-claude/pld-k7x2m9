@@ -141,6 +141,19 @@
   .todo-row input[type="checkbox"] { width: 22px; height: 22px; flex-shrink: 0; }
   .todo-row input[type="text"] { flex: 1; }
 
+  /* 今日やること(前日に登録した分の消化) */
+  .today-task-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+  .today-task-row input[type="checkbox"] { width: 22px; height: 22px; flex-shrink: 0; }
+  .today-task-row label {
+    flex: 1;
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    word-break: break-word;
+  }
+  .today-task-row.done label { color: var(--text-sub); text-decoration: line-through; }
+
   .hint { font-size: 12px; color: var(--text-sub); margin: 6px 0 0; }
 
   /* 履歴 */
@@ -413,6 +426,13 @@
       <button type="button" id="btn-back-to-today">今日に戻る</button>
     </div>
 
+    <!-- 前日の「明日やること」を当日に消化する欄。0件の日はカードごと非表示 -->
+    <div class="card" id="today-todo-card" style="display:none">
+      <h2>今日やること</h2>
+      <div id="today-todo-list"></div>
+      <p class="hint" id="today-todo-hint"></p>
+    </div>
+
     <div class="card">
       <h2>今日のメモ</h2>
       <textarea id="f-memo" rows="3" placeholder="3行日記。自由に書く"></textarea>
@@ -600,6 +620,14 @@
     return dateStr + ' (' + WEEKDAY[d.getDay()] + ')';
   }
 
+  // 前日の日付(YYYY-MM-DD)。Dateに任せるので月初・年始も正しく繰り下がる
+  function prevDateStr(dateStr) {
+    var parts = dateStr.split('-');
+    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    d.setDate(d.getDate() - 1);
+    return fmtDate(d);
+  }
+
   function loadJSON(key, fallback) {
     try {
       var raw = localStorage.getItem(key);
@@ -695,6 +723,70 @@
     }).join('\n');
   }
 
+  // ===== 今日やること(前日の「明日やること」の消化) =====
+  // 表示元の決め方:
+  //   当日の today が保存済み → それが原本。前日を後から編集しても変化させない
+  //   未保存                 → 前日の tomorrow から生成(この時点では保存しない)
+  function renderTodayTasks() {
+    var card = document.getElementById('today-todo-card');
+    var listEl = document.getElementById('today-todo-list');
+    var hintEl = document.getElementById('today-todo-hint');
+    var entries = loadJSON(KEY_ENTRIES, {});
+    var entry = entries[currentDate];
+    var tasks, sourceLabel = '';
+
+    if (entry && Array.isArray(entry.today)) {
+      tasks = entry.today.map(function (t) {
+        return { text: t.text || '', done: !!t.done };
+      });
+    } else {
+      var prev = prevDateStr(currentDate);
+      var prevEntry = entries[prev];
+      var prevTasks = (prevEntry && Array.isArray(prevEntry.tomorrow)) ? prevEntry.tomorrow : [];
+      tasks = prevTasks.map(function (t) {
+        return { text: t.text || '', done: false };
+      });
+      sourceLabel = prev.slice(5).replace('-', '/') + ' に登録した分。';
+    }
+
+    listEl.innerHTML = '';
+    if (tasks.length === 0) {
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = '';
+
+    tasks.forEach(function (t, i) {
+      var row = el('div', 'today-task-row' + (t.done ? ' done' : ''));
+      row.dataset.text = t.text;
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = t.done;
+      cb.id = 'today-task-' + i;
+      var label = document.createElement('label');
+      label.setAttribute('for', cb.id);
+      label.textContent = t.text;
+      cb.addEventListener('change', function () {
+        row.classList.toggle('done', cb.checked);
+      });
+      row.appendChild(cb);
+      row.appendChild(label);
+      listEl.appendChild(row);
+    });
+    hintEl.textContent = sourceLabel + 'チェックしたら下の「保存する」を押す';
+  }
+
+  function collectTodayTasks() {
+    var result = [];
+    document.querySelectorAll('#today-todo-list .today-task-row').forEach(function (row) {
+      result.push({
+        text: row.dataset.text,
+        done: row.querySelector('input[type="checkbox"]').checked
+      });
+    });
+    return result;
+  }
+
   // ===== フォーム ⇔ エントリ 変換 =====
   function collectEntryFromForm() {
     var tomorrow = [];
@@ -717,6 +809,7 @@
       studyContent: document.getElementById('f-study-content').value,
       studyMinutes: minutesRaw === '' ? 0 : Number(minutesRaw),
       expenses: parseExpenses(document.getElementById('f-expenses').value),
+      today: collectTodayTasks(),
       tomorrow: tomorrow
     };
   }
@@ -766,6 +859,7 @@
     }
     var entries = loadJSON(KEY_ENTRIES, {});
     loadEntryToForm(entries[dateStr]);
+    renderTodayTasks(); // currentDate 基準なので過去日編集でもその日の前日を参照する
   }
 
   document.getElementById('btn-back-to-today').addEventListener('click', function () {
@@ -858,6 +952,11 @@
         return e.item + ' ' + (Number(e.amount) || 0) + '円';
       });
       addRow('支出', lines.join('\n') + '\n合計 ' + total + '円');
+    }
+    if (Array.isArray(entry.today) && entry.today.length > 0) {
+      addRow('今日やること', entry.today.map(function (t) {
+        return (t.done ? '☑ ' : '☐ ') + t.text;
+      }).join('\n'));
     }
     if (Array.isArray(entry.tomorrow) && entry.tomorrow.length > 0) {
       addRow('明日やること', entry.tomorrow.map(function (t) {
@@ -1235,7 +1334,10 @@
         e.expenses.forEach(function (x) { expenseTotal += Number(x.amount) || 0; });
       }
       if (typeof e.condition === 'number') { condSum += e.condition; condCount++; }
-      if (Array.isArray(e.tomorrow)) {
+      // today があればそれを数える。today を持たない改善前のエントリは tomorrow で代替する
+      if (Array.isArray(e.today)) {
+        e.today.forEach(function (t) { todoTotal++; if (t.done) todoDone++; });
+      } else if (Array.isArray(e.tomorrow)) {
         e.tomorrow.forEach(function (t) { todoTotal++; if (t.done) todoDone++; });
       }
     });
@@ -1257,7 +1359,7 @@
     } else {
       addStat('体調の平均', '—');
     }
-    addStat('明日やることの消化', todoTotal > 0 ? todoDone + ' / ' + todoTotal + '件' : '—');
+    addStat('やることの消化', todoTotal > 0 ? todoDone + ' / ' + todoTotal + '件' : '—');
 
     // 今週の振り返り欄を復元
     var weekly = loadJSON(KEY_WEEKLY, {});
