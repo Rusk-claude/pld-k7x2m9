@@ -1,6 +1,7 @@
 # このリポジトリは公開されている。個人データを絶対に入れない。
 backup/
-*_backup_*.json
+# 区切り文字はハイフン・アンダースコア問わず拾う(life-dashboard-backup-2026-07-06.json 等)
+*backup*.json
 *.csv
 
 # OS / エディタ / OneDrive
