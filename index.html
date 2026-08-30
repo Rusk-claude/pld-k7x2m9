@@ -408,6 +408,22 @@
   }
   .entry-danger .del-btn { width: 100%; min-height: 44px; }
 
+  /* 週の移動(◀ ラベル ▶) */
+  .week-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .week-nav button {
+    min-width: 44px;
+    min-height: 44px;
+    background: var(--input-bg);
+    color: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .week-nav button:disabled { opacity: 0.35; color: var(--text-sub); cursor: default; }
+  .week-nav .label { flex: 1; text-align: center; font-weight: 600; font-size: 14px; }
+
   /* 週次レビュー(Phase 3) */
   .stat-row {
     display: flex;
@@ -556,10 +572,15 @@
 
   <!-- ===== 画面4: 週次レビュー(Phase 3) ===== -->
   <section class="screen" id="screen-weekly">
-    <h1>週次レビュー <small id="weekly-label"></small></h1>
+    <h1>週次レビュー</h1>
 
     <div class="card">
-      <h2>今週のようす(自動集計)</h2>
+      <div class="week-nav">
+        <button type="button" id="wk-prev" aria-label="前の週">◀</button>
+        <span class="label" id="weekly-label"></span>
+        <button type="button" id="wk-next-week" aria-label="次の週">▶</button>
+      </div>
+      <h2>その週のようす(自動集計)</h2>
       <div id="weekly-stats"></div>
     </div>
 
@@ -1347,25 +1368,74 @@
     return date.getFullYear() + '-W' + String(weekNo).padStart(2, '0');
   }
 
-  // 今週(月曜〜日曜)の日付文字列を7つ返す
-  function thisWeekDates() {
-    var now = new Date();
-    var date = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    date.setDate(date.getDate() - ((date.getDay() + 6) % 7)); // 月曜まで戻る
+  function dateFromStr(dateStr) {
+    var p = dateStr.split('-');
+    return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  }
+
+  // その日が属する週の月曜日
+  function mondayOf(dateStr) {
+    var d = dateFromStr(dateStr);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return fmtDate(d);
+  }
+
+  // 月曜日から1週間(月曜〜日曜)の日付文字列を7つ返す
+  function weekDates(mondayStr) {
+    var d = dateFromStr(mondayStr);
     var arr = [];
     for (var i = 0; i < 7; i++) {
-      arr.push(fmtDate(date));
-      date.setDate(date.getDate() + 1);
+      arr.push(fmtDate(d));
+      d.setDate(d.getDate() + 1);
     }
     return arr;
   }
 
+  // n週ずらした月曜日。Date に任せるので月またぎ・年またぎも正しく動く
+  function shiftWeek(mondayStr, weeks) {
+    var d = dateFromStr(mondayStr);
+    d.setDate(d.getDate() + weeks * 7);
+    return fmtDate(d);
+  }
+
+  function weekKeyOf(mondayStr) {
+    return isoWeekKey(dateFromStr(mondayStr));
+  }
+
+  // 表示中の週を「その週の月曜日」の YYYY-MM-DD で持つ。
+  // 文字列なので不変で、辞書順比較がそのまま時系列比較になる
+  var weeklyMonday = mondayOf(todayStr());
+
+  // 入力欄が表示中の週の保存済み内容と違うか。
+  // 状態は持たず、その場でストレージと比較するだけにする
+  function weeklyDirty() {
+    var r = loadJSON(KEY_WEEKLY, {})[weekKeyOf(weeklyMonday)] || {};
+    return document.getElementById('wk-kept').value !== (r.kept || '') ||
+           document.getElementById('wk-stopped').value !== (r.stopped || '') ||
+           document.getElementById('wk-next').value !== (r.nextOneThing || '');
+  }
+
+  // 週を移動する。ボタンの disabled とは別に、ここでも未来週を必ず止める
+  function goWeek(delta) {
+    var next = shiftWeek(weeklyMonday, delta);
+    if (next > mondayOf(todayStr())) return;
+    // 移動すると renderWeekly() が入力欄を上書きするため、未保存なら先に確認する
+    if (weeklyDirty() &&
+        !confirm('保存していない振り返りがあります。\n破棄して別の週へ移動しますか?')) return;
+    weeklyMonday = next;
+    renderWeekly();
+  }
+  document.getElementById('wk-prev').addEventListener('click', function () { goWeek(-1); });
+  document.getElementById('wk-next-week').addEventListener('click', function () { goWeek(1); });
+
   function renderWeekly() {
-    var weekKey = isoWeekKey(new Date());
-    var dates = thisWeekDates();
+    var weekKey = weekKeyOf(weeklyMonday);
+    var dates = weekDates(weeklyMonday);
     document.getElementById('weekly-label').textContent =
       weekKey + '(' + dates[0].slice(5).replace('-', '/') +
       '〜' + dates[6].slice(5).replace('-', '/') + ')';
+    // 今週を表示しているときは「次の週」を押せなくする
+    document.getElementById('wk-next-week').disabled = (weeklyMonday >= mondayOf(todayStr()));
 
     var entries = loadJSON(KEY_ENTRIES, {});
     var recorded = 0, studyTotal = 0, expenseTotal = 0;
@@ -1406,7 +1476,7 @@
     }
     addStat('やることの消化', todoTotal > 0 ? todoDone + ' / ' + todoTotal + '件' : '—');
 
-    // 今週の振り返り欄を復元
+    // 表示中の週の振り返り欄を復元
     var weekly = loadJSON(KEY_WEEKLY, {});
     var review = weekly[weekKey] || {};
     document.getElementById('wk-kept').value = review.kept || '';
@@ -1415,7 +1485,8 @@
   }
 
   document.getElementById('btn-save-weekly').addEventListener('click', function () {
-    var weekKey = isoWeekKey(new Date());
+    // 実時間の今週ではなく、画面に表示している週へ保存する
+    var weekKey = weekKeyOf(weeklyMonday);
     var weekly = loadJSON(KEY_WEEKLY, {});
     weekly[weekKey] = {
       kept: document.getElementById('wk-kept').value,
