@@ -400,6 +400,14 @@
     padding: 0 10px;
   }
 
+  /* 履歴の日次記録削除。破壊的操作なので編集ボタンと区切って見せる */
+  .entry-danger {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+  }
+  .entry-danger .del-btn { width: 100%; min-height: 44px; }
+
   /* 週次レビュー(Phase 3) */
   .stat-row {
     display: flex;
@@ -984,7 +992,44 @@
     });
     frag.appendChild(editBtn);
 
+    // 破壊的操作なので編集ボタンとは区切り線を挟んで配置する
+    var dangerWrap = document.createElement('div');
+    dangerWrap.className = 'entry-danger';
+    var delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'del-btn';
+    delBtn.textContent = 'この日の記録を削除';
+    delBtn.addEventListener('click', function () { deleteEntry(date); });
+    dangerWrap.appendChild(delBtn);
+    frag.appendChild(dangerWrap);
+
     return frag;
+  }
+
+  // 日次記録を日付キーごと削除する。書き込むのは pld_entries だけ。
+  // 週次集計は週次タブを開いたときの renderWeekly() で再計算されるためここでは呼ばない
+  // (呼ぶと週次画面の未保存の振り返り入力を上書きしてしまう)
+  function deleteEntry(date) {
+    if (!confirm(formatDateLabel(date) + ' の記録を完全に削除します。\n' +
+                 'この操作は元に戻せません。削除しますか?')) return;
+    var entries = loadJSON(KEY_ENTRIES, {});
+    if (!(date in entries)) return;
+    delete entries[date];
+    saveJSON(KEY_ENTRIES, entries);
+    renderHistory();
+    // 「今日」画面が削除の影響を受ける場合だけ組み直す
+    if (date === currentDate) {
+      // 編集対象そのものが消えた → 実際の今日へ戻す。削除済みの日付を編集対象に残すと、
+      // そのまま保存してエントリを復活させられてしまうため。
+      // 今日を削除した場合も同じ経路で今日の空状態になり、改善 #1 の既存経路を通るので
+      // 前日に tomorrow があれば「今日やること」は未チェックで再生成される
+      setCurrentDate(todayStr());
+    } else if (date === prevDateStr(currentDate)) {
+      // 「今日やること」の生成元が消えた → そこだけ作り直す(入力中の他の項目は保持する)。
+      // 作り直さないと、消したはずのタスクが画面に残り、保存すると復活してしまう
+      renderTodayTasks();
+    }
+    showToast('削除しました');
   }
 
   // ===== JSONエクスポート =====
